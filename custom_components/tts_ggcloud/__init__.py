@@ -1,4 +1,3 @@
-
 # Declare variables
 DOMAIN = 'tts_ggcloud'
 SERVICE_GGCLOUD_TTS = 'say'
@@ -19,7 +18,7 @@ CONF_FILE_PATH = '/config/www/tts/'
 CON_AUDIO_PATH = '/local/tts/'
 
 
-import requests, json, os, time, urllib, datetime, base64
+import requests, json, os, time, urllib, datetime, base64, hashlib, os.path
 
 def setup(hass, config):
 
@@ -30,6 +29,8 @@ def setup(hass, config):
         
         url_hass = str(config[DOMAIN][CONF_URL_HASS])
         api = str(config[DOMAIN][CONF_API])
+
+
         # Get data service
         media_id = data_call.data.get(CONF_PLAYER_ID)
         message = str(data_call.data.get(CONF_MESSAGE)[0:2000])
@@ -40,25 +41,31 @@ def setup(hass, config):
         # List voice of Google Speech Synthesis
         voice_list = {'Google_Voice_1': 'vi-VN-Wavenet-A', 'Google_Voice_2': 'vi-VN-Wavenet-B', 'Google_Voice_3': 'vi-VN-Wavenet-C', 'Google_Voice_4': 'vi-VN-Wavenet-D', 'Google_Voice_5': 'vi-VN-Standard-A', 'Google_Voice_6': 'vi-VN-Standard-B', 'Google_Voice_7':'vi-VN-Standard-C' , 'Google_Voice_8':'vi-VN-Standard-D'}
         voice_name = voice_list.get(voice_name)
-        #HTTP Request
-        url = 'https://texttospeech.googleapis.com/v1beta1/text:synthesize?key='+ api
-        #Header Parameters
-        headers = {'Content-type': 'application/json'}
-        # Body Parameters
-        data = { "audioConfig": { "audioEncoding": "MP3", "pitch": pitch, "speakingRate": speed },  "input": { "text": message }, "voice": { "languageCode": languageCode, "name": voice_name }}
-		#Get respounse from Server	
-        response = requests.post(url, data = json.dumps(data), headers = headers)
-        # Cut audio string from response
-        audio_string = response.text.split('"')
-        # Convert audio string to audio byte
-        audio_byte = base64.b64decode(audio_string[3])
+
         # Create unique audio file name
-        uniq_filename = 'tts_ggcloud' + str(datetime.datetime.now().date()) + '_' + str(datetime.datetime.now().time()).replace(':', '.') + '.mp3'
-        # Open audio file
-        audio_file = open(CONF_FILE_PATH + uniq_filename, 'wb')
-        # Write audio byte to file
-        audio_file.write(audio_byte)
-        audio_file.close()
+        m = hashlib.md5()
+        m.update(str(voice_name + speed + pitch + languageCode + message).encode('utf-8'))
+        uniq_filename = 'tts_ggcloud_' + m.hexdigest() + '.mp3'
+        
+	#check exits. by Do Duy Cop
+        if not(os.path.exists(CONF_FILE_PATH + uniq_filename)):
+            #HTTP Request
+            url = 'https://texttospeech.googleapis.com/v1beta1/text:synthesize?key='+ api
+            #Header Parameters
+            headers = {'Content-type': 'application/json'}
+            # Body Parameters
+            data = { "audioConfig": { "audioEncoding": "MP3", "pitch": pitch, "speakingRate": speed },  "input": { "text": message }, "voice": { "languageCode": languageCode, "name": voice_name }}
+            #Get respounse from Server	
+            response = requests.post(url, data = json.dumps(data), headers = headers)
+            # Cut audio string from response
+            audio_string = response.text.split('"')
+            # Convert audio string to audio byte
+            audio_byte = base64.b64decode(audio_string[3])
+            # Open audio file
+            audio_file = open(CONF_FILE_PATH + uniq_filename, 'wb')
+            # Write audio byte to file
+            audio_file.write(audio_byte)
+            audio_file.close()
 
     	# Play audio file with Home Assistant Service#	
         url_file = url_hass + CON_AUDIO_PATH + uniq_filename
@@ -68,4 +75,4 @@ def setup(hass, config):
         hass.services.call('media_player', 'play_media', service_data)
         
     hass.services.register(DOMAIN, SERVICE_GGCLOUD_TTS, tts_handler)
-    return True
+    return True  
